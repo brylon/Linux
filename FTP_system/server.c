@@ -1,397 +1,310 @@
-#include "test.h"
+#include"test.h"
 
-int connectsock(struct sockaddr_in,char *);
-void cmd_chose(struct sockaddr_in, char *);
-void ftp_login(struct sockaddr_in, char *);
-void cmd_help();
-void cmd_quit();
-void cmd_ls(struct sockaddr_in, char *);
-void cmd_pwd(struct sockaddr_in, char *);
-void cmd_get(struct sockaddr_in, char *);
-void cmd_put(struct sockaddr_in, char *);
-void cmd_del(struct sockaddr_in, char *);
-void cmd_about(struct sockaddr_in, char *);
-int main(int argc, char **argv) {
-    int    sockfd, n,rec_len;
-    char    recvline[4096], sendline[4096];
-    char    buf[MAXLINE];
+#define MAXLINE 4096 
 
-    struct sockaddr_in  servaddr;
+void cmd_chose(char  *sendline,int sockfd);
+void ftp_login(int sockfd);
+void cmd_ls(int sockfd);
+void cmd_get(int sockfd,char *filename);
+void cmd_put(int sockfd,char *filename);
+void cmd_pwd(int sockfd);
+void cmd_about(int sockfd);
 
-    if(argc != 2){
-        printf("usage: ./client <ipaddress>\n");
-        exit(0);
+void cmd_del(int sockfd,char *filename);
+
+int main(int argc, char** argv){
+      int    listenfd, connfd;
+      struct sockaddr_in     servaddr;
+      char    buff[4096];
+      int     n;
+      pid_t pid;
+      if( (listenfd = socket(AF_INET, SOCK_STREAM, 0)) == -1 ){
+          printf("create socket error: %s(errno: %d)\n",strerror(errno),errno);
+          exit(0);
+      }
+      memset(&servaddr, 0, sizeof(servaddr));
+      servaddr.sin_family = AF_INET;
+      servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+      servaddr.sin_port = htons(8000);
+      if( bind(listenfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) == -1){
+          printf("bind socket error: %s(errno: %d)\n",strerror(errno),errno);
+          exit(0);
+      }
+      if( listen(listenfd, 10) == -1){
+          printf("listen socket error: %s(errno: %d)\n",strerror(errno),errno);
+          exit(0);
+      }
+      
+      printf("220 ======waiting for client's request======\n");
+     
+
+
+      while(1){
+        printf("server> ");
+         if( (connfd = accept(listenfd, (struct sockaddr*)NULL, NULL)) == -1){
+              printf("accept socket error: %s(errno: %d)",strerror(errno),errno);
+              //continue;
+          }
+         else{
+              printf("client connect\n");
+          }
+        memset(buff,0,sizeof(buff));
+
+        pid=fork();
+        if(pid==0){
+
+        
+        if(read(connfd,buff,4096)<0){
+           perror("connect:");
+         }
+         
+         cmd_chose(buff,connfd);
+        
+        printf("recv msg from client: %s\n\n", buff);
+        
+        
+        //close(connfd);
+      //close(listenfd);
+      }
+      }
+}
+void cmd_chose(char *recvline,int sockfd){
+    //sendline[sizeof(sendline)]= '\0';
+    if(strcmp(recvline,"help") == 0){
+      //printf("%s\n",recvline);
+        //cmd_help();
     }
+    else if(strcmp(recvline,"login") == 0){
+      ftp_login(sockfd);
+    }
+    else if(strcmp(recvline,"?") == 0){
+      //printf("%s\n",recvline);
+        //cmd_help();
+    }
+    else if(strcmp(recvline,"about") == 0){
+      //printf("%s\n",recvline);
+        //cmd_help();
+      cmd_about(sockfd);
+    }
+    else if(strcmp(recvline,"quit") == 0){
+      //printf("%s\n",recvline);
+        //cmd_quit();
+    }
+    else if(strcmp(recvline,"exit") == 0){
+      //printf("%s\n",recvline);
+        //cmd_quit();
+    }
+    else if(strcmp(recvline,"ls") == 0){
+      //printf("%s\n",recvline);
+        cmd_ls(sockfd);
+    }
+    else if(strcmp(recvline,"pwd") == 0){
+      //printf("%s\n",recvline);
+      cmd_pwd(sockfd);
 
-    // /*创建套接字*/
-    //int sockfd;
-    // sockfd = socket(AF_INET,SOCK_STREAM,0);//创建tcp套接字
-    // if(sockfd >= 0){
-    //     printf("create socket successful!\n");
-    // }
-    // else{
-    //     printf("create socket error: %s(errno: %d)\n", strerror(errno),errno);
-    // }
+    }
+    else if(strcmp(recvline,"cd") == 0){
+      //printf("%s\n",recvline);
 
-    /*套接字设置*/
-    memset(&servaddr, 0, sizeof(servaddr));//将servaddr置为0
-    servaddr.sin_family = AF_INET;   //网络协议设置为IPV4
-    servaddr.sin_port = htons(8000);//端口设置
-    
-    int f= inet_pton(AF_INET, argv[1], &servaddr.sin_addr);//ip转换为
-    if(f<=0){
-        printf("inet_pton error for %s\n",argv[1]);
+    }
+    else if(strncmp(recvline,"put",3) == 0){
+      //printf("%s\n",recvline);
+      cmd_put(sockfd,recvline+4);
+
+    }
+    else if(strncmp(recvline,"get",3) == 0){
+        cmd_get(sockfd,recvline+4);
+    }
+    else if(strncmp(recvline,"del",3) == 0){
+      cmd_del(sockfd,recvline+4);
     }
     else{
-        printf("inet_pton successful\n");
-    }
-
-    // /*进行连接*/
-    // f = connect(sockfd, (struct sockaddr* )&servaddr, sizeof(servaddr));
-    // if(f < 0) {
-    //     printf("connect error for %s(errno: %d)\n", strerror(errno),errno);
-    //     exit(-1);
-    // }
-    // else{
-    //     printf("connect successful...\n");
-    // }
-
-    ftp_login(servaddr,sendline);
-    
-    while(1){
-        printf("ftp>");
-
-        memset(sendline,0,sizeof(sendline));
-
-        fgets(sendline,sizeof(sendline),stdin);//获取输入的命令
-
-        cmd_chose(servaddr,sendline);
-
-        //printf("%s\n",sendline);
-
-        //write(sockfd,sendline,strlen(sendline));
-
-        printf("\n");
-    }
-
-}
-void cmd_chose(struct sockaddr_in servaddr, char *sendline){
-    // int l=sizeof(sendline);
-    // sendline[l]='\0';
-
-    sendline[strlen(sendline)-1]='\0';
-
-    //printf("%s\n",sendline);
-    // if(strcmp(sendline,"login") == 0){
-    //     ftp_login(servaddr,sendline);
-    // }
-
-    if(strcmp(sendline,"help") == 0){
-        //printf("%s\n",sendline);
-        cmd_help();
-    }
-    else if(strcmp(sendline,"?") == 0){
-        //printf("%s\n",sendline);
-        cmd_help();
-    }
-    else if(strcmp(sendline,"quit") == 0){
-        //printf("%s\n",sendline);
-        cmd_quit();
-    }
-    else if(strcmp(sendline,"exit") == 0){
-        //printf("%s\n",sendline);
-        cmd_quit();
-    }
-    else if(strcmp(sendline,"ls") == 0){
-        //printf("%s\n",sendline);
-        cmd_ls(servaddr,sendline);
-    }
-    else if(strcmp(sendline,"pwd") == 0){
-        //printf("%s\n",sendline);
-        cmd_pwd(servaddr,sendline);
-
-    }
-    else if(strcmp(sendline,"cd") == 0){
-        //printf("%s\n",sendline);
-
-    }
-    else if(strncmp(sendline,"put",3) == 0){
-        //printf("%s\n",sendline);
-        cmd_put(servaddr,sendline);
-
-    }
-    else if(strncmp(sendline,"get",3) == 0){
-        cmd_get(servaddr,sendline);
-    }
-    else if(strcmp(sendline,"about") == 0){
-        cmd_about(servaddr,sendline);
-    }
-    else if(strncmp(sendline,"del",3) == 0){
-        cmd_del(servaddr,sendline);
-    }
-    else{
-        cmd_quit();
-
+      //exit(0);
     }
 }
-int connectsock(struct sockaddr_in servaddr,char *sendline){
-    //printf("hello world\n");
-    /*创建套接字*/
-    int sockfd;
-    sockfd = socket(AF_INET,SOCK_STREAM,0);//创建tcp套接字
-    if(sockfd < 0){
-        //printf("create socket successful!\n");
-        printf("create socket error: %s(errno: %d)\n", strerror(errno),errno);
-    }
-    // else{
-    //     printf("create socket successful!\n");
-    //     printf("create socket error: %s(errno: %d)\n", strerror(errno),errno);
-    // }
-
-    /*进行连接*/
-    int f = connect(sockfd, (struct sockaddr* )&servaddr, sizeof(servaddr));
-    if(f < 0) {
-        printf("connect error for %s(errno: %d)\n", strerror(errno),errno);
-        exit(-1);
-    }
-    // else{
-    //     printf("connect successful...\n");
-    // }
-    // char sendline[4096];
-    // strcpy(sendline,"ls");
-    return sockfd;
-}
-void ftp_login(struct sockaddr_in servaddr, char *sendline){
-    
-    int sockfd;
-    char userid[N],pasw[N];
-
-    sockfd = connectsock(servaddr,sendline);
-
-    strcpy(userid,"login");
-
-
-    int f=write(sockfd,userid,strlen(userid));
+void cmd_about(int sockfd){
+  //printf("ftp>Ubuntu 16.04.6 LTS amd64\n");
+  char sendline[MAXLINE];
+  strcpy(sendline,"Ubuntu 16.04.6 LTS amd64");
+  int f=write(sockfd,sendline,strlen(sendline));
     if(f < 0) {
         printf("send userid error for %s(errno: %d)\n", strerror(errno),errno);
         exit(-1);
     }
-    memset(userid,0,sizeof(userid));
-    printf("ftp>请输入你的账号：");
-
-    fgets(userid,sizeof(userid),stdin);
-
-    userid[strlen(userid)-1]='\0';
+}
+void ftp_login(int sockfd){
+  char userid[N],pasw[N];
+  int f;
+  //printf("hello\n");
+  f=read(sockfd,userid,sizeof(userid));
+  if(f < 0) {
+      printf("send pasw error for %s(errno: %d)\n", strerror(errno),errno);
+      exit(-1);
+  }
+  //printf("%s\n",userid);
+  f=read(sockfd,pasw,sizeof(pasw));
+  if(f < 0) {
+      printf("send pasw error for %s(errno: %d)\n", strerror(errno),errno);
+      exit(-1);
+  }
+  //printf("%s\n",userid);
+  //printf("%s\n",pasw);
+  if(strcmp(userid,"admin")==0&&strcmp(pasw,"123456")==0){
+    userid[0]='Y';
+    f=write(sockfd,userid,sizeof(userid));
+    if(f < 0) {
+        printf("send userid error for %s(errno: %d)\n", strerror(errno),errno);
+        exit(-1);
+    }
+  }
+  else{
+    userid[0]='N';
     f=write(sockfd,userid,strlen(userid));
     if(f < 0) {
         printf("send userid error for %s(errno: %d)\n", strerror(errno),errno);
         exit(-1);
     }
-
-    printf("\nftp>请输入你的密码：");
-
-    fgets(pasw,sizeof(pasw),stdin);
-
-    
-    pasw[strlen(pasw)-1]='\0';
-    // printf("%s\n",userid);
-    // printf("%s\n",pasw);
-    
-    //printf("%s\n",userid);
-    f=write(sockfd,pasw,strlen(pasw));
-    if(f < 0) {
-        printf("send pasw error for %s(errno: %d)\n", strerror(errno),errno);
-        exit(-1);
-    }
-    
-    f=read(sockfd,pasw,strlen(pasw));
-    if(f < 0) {
-        printf("send pasw error for %s(errno: %d)\n", strerror(errno),errno);
-        exit(-1);
-    }
-    //printf("%s\n",pasw);
-
-    if(pasw[0]=='Y'){
-        printf("ftp>230 登录成功\n");
-    }
-    else{
-        printf("ftp>登录失败，请重新登录\n");
-        ftp_login(servaddr,sendline);
-    }
+  }
+  printf("server>230\n");
 }
-void cmd_help(){
-    printf("214\n");
-    printf("---------help------:展示能够操作的指令\n\n");
-    printf("----------?--------:展示能够操作的指令\n\n");
-    printf("----------ls-------:显示服务器的文件目录\n\n");
-    printf("----get+filename---:从服务器下载文件\n\n");
-    printf("----put+filename---:向服务器上传文件\n\n");
-    printf("--------exit-------:退出程序\n\n");
-    printf("--------quit-------:退出程序\n\n");
-}
-void cmd_quit(){
-    printf("221");
-    exit(0);
-}
-void cmd_ls(struct sockaddr_in servaddr, char *sendline){
-     
-    int sockfd;
-    sockfd=connectsock(servaddr,sendline);
-
-    int f=write(sockfd,sendline,strlen(sendline));
-    if(f < 0) {
-        printf("501send error for %s(errno: %d)\n", strerror(errno),errno);
-        exit(-1);
+void cmd_ls(int sockfd){
+  //printf("hello world\n");
+  DIR * mydir =NULL;
+  struct dirent *myitem = NULL;
+  char recvline[MAXLINE] ;
+  memset(recvline,0,sizeof(recvline));
+  //opendir为用来打开参数name 指定的目录, 并返回DIR*形态的目录流
+  //mydir中存有相关目录的信息
+  if((mydir=opendir(".")) == NULL){
+    printf("OpenDir Error!\n");
+    exit(1);
+  }
+  char reword[1024];
+  bzero(reword,1024);
+  while((myitem = readdir(mydir)) != NULL){//用来读取目录,返回是dirent结构体指针
+    if(sprintf(recvline, myitem->d_name, MAXLINE) < 0)//把文件名写入commd指向的缓冲区
+        {
+            printf("Sprintf Error!\n");
+            exit(1);
+        }
+        strcat(reword,recvline);
+        strcat(reword,"\n");
+        
     }
-    printf("ftp>212");
-    if(read(sockfd, sendline, MAXLINE) > 0)  //从sockfd中读取N字节内容放入commd中，
-    {                                   //返回值为读取的字节数
-        printf("%s ",sendline);
-    }
-    printf("\n");
-
+    if(write(sockfd, reword, 1024) < 0 )//将commd缓冲区的内容发送会client
+        {
+            printf("Write Error!\n");
+            exit(1);
+        }
+    printf("213\n");
+    closedir(mydir);//关闭目录流
     close(sockfd);
 }
-void cmd_pwd(struct sockaddr_in servaddr, char *sendline){
+void cmd_pwd(int sockfd){
+  char recvline[MAXLINE]={0};
+  //memset(recvline,0,sizeof(recvline));
 
-    int sockfd;
-    sockfd=connectsock(servaddr,sendline);
-    int f;
-    f=write(sockfd,sendline,strlen(sendline));
-    if(f < 0) {
-        printf("501send error for %s(errno: %d)\n", strerror(errno),errno);
-        exit(-1);
+  getcwd(recvline, sizeof(recvline));
+  printf("212%s\n",recvline);
+  // while(1){
+    if(write(sockfd, recvline, MAXLINE) < 0 ){//将commd缓冲区的内容发送会client
+      printf("Write Error!\n");
+      exit(1);
     }
-
-    printf("ftp>212 ");
-    // while( >= 0)  //从sockfd中读取N字节内容放入commd中，
-    // {
-        if(read(sockfd, sendline, MAXLINE) < 0){
-            printf("receive error for %s(errno: %d)\n", strerror(errno),errno);
-            exit(-1);
-        }                               //返回值为读取的字节数
-        printf("%s ",sendline);
+    // else{
+    //   printf("hello \n");
     // }
-    printf("\n");
-
-    close(sockfd);
+  // }
 }
-void cmd_get(struct sockaddr_in servaddr, char *sendline){
+void cmd_get(int sockfd,char *filename){
+    //printf("hello\n");
+    int fd, nbytes;
+    char buffer[N];
+    bzero(buffer, N);
 
-    int fd;
-    int sockfd;
-    char transfile[N];
-    int nbytes;
-
-    sockfd=connectsock(servaddr,sendline);
-
-    //通过write函数向服务端发送数据
-    if(write(sockfd, sendline, N) < 0)
+    printf("get filename : [ %s ]\n",filename);
+    if((fd=open(filename, O_RDONLY)) < 0)//以只读的方式打开client要下载的文件
     {
-        printf("Write Error!At commd_get 1\n");
-        exit(1);
-    }
-    //利用read函数来接受服务器发来的数据
-    if(read(sockfd, transfile, N) < 0)
-    {
-        printf("Read Error!At commd_get 1\n");
-        exit(1);
-    }
-    //用于检测服务器端文件是否打开成功
-    if(transfile[0] =='N')
-    {
-        close(sockfd);
-        printf("Can't Open The File!\n");
-        return ;
-    }
-    //open函数创建一个文件，文件地址为(commd+4)，该地址从命令行输入获取
-    if((fd=open(sendline+4, O_WRONLY|O_CREAT|O_TRUNC, 0644)) < 0)
-    {
-        printf("Open Error!\n");
-        exit(1);
-    }
-    //read函数从套接字中获取N字节数据放入buffer中，返回值为读取的字节数
-    while((nbytes=read(sockfd, transfile, N)) > 0)
-    {
-        //write函数将buffer中的内容读取出来写入fd所指向的文件，返回值为实际写入的字节数
-        if(write(fd, transfile, nbytes) < 0)
+        printf("Open file Error!\n");
+        buffer[0]='N';
+        if(write(sockfd, buffer, N) <0)
         {
-            printf("Write Error!At commd_get 2");
-        }
-    }
-    printf("ftp>226 ok get file successful\n");
-    close(fd);
-    close(sockfd);
-}
-void cmd_put(struct sockaddr_in servaddr, char *sendline){
-    int fd;
-    int sockfd;
-    char transfile[N];
-    int nbytes;
-
-    sockfd=connectsock(servaddr,sendline);
-
-    if(write(sockfd, sendline, N)<0)
-    {
-        printf("Wrtie Error!At commd_put 1\n");
-        exit(1);
-    }
-    //open函数从(commd+4)中，读取文件路径，以只读的方式打开
-    if((fd=open(sendline+4, O_RDONLY)) < 0)
-    {
-        printf("Open Error!\n");
-        exit(1);
-    }
-    //从fd指向的文件中读取N个字节数据
-    while((nbytes=read(fd, transfile, N)) > 0)
-    {
-        //从buffer中读取nbytes字节数据，写入套接字中
-        if(write(sockfd, transfile, nbytes) < 0)
-        {
-            printf("Write Error!At commd_put 2");
+            printf("Write Error!At commd_get 1\n");
+            exit(1);
         }
     }
 
-    printf("226 ok put file successful\n");
-    
+    buffer[0] = 'Y';    //此处标示出文件读取成功
+    if(write(sockfd, buffer, N) <0)
+    {
+        printf("Write Error! At commd_get 2!\n");
+        close(fd);
+        exit(1);
+    }
+
+    while((nbytes=read(fd, buffer, N)) > 0)//将文件内容读到buffer中
+    {
+        if(write(sockfd, buffer, nbytes) < 0)//将buffer发送回client
+        {
+            printf("Write Error! At commd_get 3!\n");
+            close(fd);
+            exit(1);
+        }
+    }
+    printf("226\n");
     close(fd);
     close(sockfd);
 }
-void cmd_about(struct sockaddr_in servaddr, char *sendline){
-    
-    int sockfd;
+void cmd_put(int sockfd,char *filename){
+    int fd, nbytes;
+    char buffer[N];
+    bzero(buffer, N);
 
-    sockfd=connectsock(servaddr,sendline);
-    int f=write(sockfd,sendline,strlen(sendline));
-    if(f < 0) {
-        printf("send userid error for %s(errno: %d)\n", strerror(errno),errno);
-        exit(-1);
+    printf("get filename : [ %s ]\n",filename);
+    if((fd=open(filename, O_WRONLY|O_CREAT|O_TRUNC, 0644)) < 0)//以只写的方式打开文件，若文件存在则清空，若文件不存在则新建文件
+    {
+        printf("Open file Error!\n");
+        exit(0);
     }
-    memset(sendline,0,sizeof(sendline));
-    f=read(sockfd,sendline,strlen(sendline));
-    if(f < 0) {
-        printf("send userid error for %s(errno: %d)\n", strerror(errno),errno);
-        exit(-1);
+
+    while((nbytes=read(sockfd, buffer, N)) > 0)//将client发送的文件写入buffer
+    {
+        if(write(fd, buffer, nbytes) < 0)//将buffer中的内容写到文件中
+        {
+            printf("Write Error! At commd_put 1!\n");
+            close(fd);
+            exit(1);
+        }
     }
-    printf("ftp>Ubuntu 16.04.6 LTS amd64\n\n");
+    printf("226\n");
+    close(fd);
+    close(sockfd);
 }
 
-void cmd_del(struct sockaddr_in servaddr, char *sendline){
-    int sockfd;
-    sockfd=connectsock(servaddr,sendline);
-
-    if(write(sockfd, sendline, N)<0)
-    {
-        printf("Wrtie Error!At commd_put 1\n");
-        exit(1);
-    }
-    if(write(sockfd, sendline, N)<0)
-    {
-        printf("Wrtie Error!At commd_put 1\n");
-        exit(1);
-    }
-    if(sendline[0]=='Y'){
-        printf("226 ok delete file successful\n");
-    }
-
+void cmd_del(int sockfd,char *filename){
+  char message[N];
+  message[0] = 'Y';
+  if (remove(filename) < 0)
+        strcpy(message, "N");
+  write(sockfd, message, N);
 }
+
+// void server_rm(int data_fd, int control_fd, char *command) {
+//     char filename[N];
+//     get_filename(filename, command + 3);
+
+//     control_response(control_fd, START);
+
+//     char message[N];
+//     memset(message, 0, N);
+//     if (remove(filename) < 0)
+//         strcpy(message, "file does not exist.");
+//     else
+//         strcpy(message, "remove file successfully.");
+
+//     printf("%s\n", message);
+
+//     write(data_fd, message, N);
+
+//     control_response(control_fd, END);
+// }
